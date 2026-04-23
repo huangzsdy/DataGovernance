@@ -6,17 +6,18 @@
 #   bash run.sh                        # 默认使用 LangChain TokenTextSplitter
 #   bash run.sh --splitter token       # 使用 LangChain TokenTextSplitter
 #   bash run.sh --splitter semantic    # 使用 SemanticTextSplitter
-#   bash run.sh --splitter tokenizer   # 使用 HuggingFaceTokenizerSplitter #面壁吕老师推荐
+#   bash run.sh --splitter tokenizer   # 使用 HuggingFaceTokenizerSplitter
+#   bash run.sh --splitter pysbd       # 使用 PySBDSplitter (推荐，按句子精确切分)
 #
 # 方案2: 使用Celery异步运行（需要Redis）
-#   bash run.sh --celery --splitter tokenizer
+#   bash run.sh --celery --splitter pysbd
 
 # 设置新的输入输出目录
 INPUT_DIR="/mnt/c/Users/ThinkPad/my_own_files/work/projects/shujupingtai/multi-language/nemotron/test_data"
 OUTPUT_DIR="/mnt/c/Users/ThinkPad/my_own_files/work/projects/shujupingtai/multi-language/nemotron/test_data_output"
 
 # 默认splitter类型
-SPLITTER_TYPE="token"
+SPLITTER_TYPE="pysbd"
 
 # 解析命令行参数
 while [[ $# -gt 0 ]]; do
@@ -31,7 +32,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: bash run.sh [--celery] [--splitter token|semantic|tokenizer]"
+            echo "Usage: bash run.sh [--celery] [--splitter token|semantic|tokenizer|pysbd]"
             exit 1
             ;;
     esac

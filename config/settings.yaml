@@ -7,8 +7,8 @@ mode: "directory"
 input_path: "/mnt/c/Users/ThinkPad/my_own_files/work/projects/shujupingtai/multi-language/nemotron/test_data"
 output_path: "/mnt/c/Users/ThinkPad/my_own_files/work/projects/shujupingtai/multi-language/nemotron/test_data_output"
 
-# 文本拆分器类型: "token" - TokenTextSplitter, "semantic" - SemanticTextSplitter, "tokenizer" - HuggingFaceTokenizerSplitter
-splitter_type: "tokenizer"
+# 文本拆分器类型: "token" - TokenTextSplitter, "semantic" - SemanticTextSplitter, "tokenizer" - HuggingFaceTokenizerSplitter, "pysbd" - PySBDSplitter
+splitter_type: "pysbd"
 
 # 要处理的content字段名
 content_field: "content"
@@ -29,6 +29,14 @@ tokenizer_splitter:
   max_tokens: 1000
   overlap: 100
   hf_model_name: "bert-base-uncased"
+  language: "zh"
+
+# PySBDSplitter参数 (使用pysbd进行精确句子分割)
+pysbd_splitter:
+  max_tokens: 1000
+  overlap: 100
+  language: "zh"
+  language_is_code: true
 
 # Celery配置
 celery:

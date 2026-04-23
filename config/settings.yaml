@@ -7,7 +7,7 @@ mode: "single"
 input_path: "data/input.jsonl"
 output_path: "data/output.jsonl"
 
-# 文本拆分器类型: "token" - TokenTextSplitter, "semantic" - SemanticTextSplitter
+# 文本拆分器类型: "token" - TokenTextSplitter, "semantic" - SemanticTextSplitter, "tokenizer" - HuggingFaceTokenizerSplitter
 splitter_type: "token"
 
 # 要处理的content字段名
@@ -23,6 +23,12 @@ semantic_splitter:
   chunk_size: 1000
   buffer_size: 1
   add_start_index: false
+
+# HuggingFaceTokenizerSplitter参数 (使用HuggingFace tokenizer进行精确token统计和切分)
+tokenizer_splitter:
+  max_tokens: 1000
+  overlap: 100
+  hf_model_name: "bert-base-uncased"
 
 # Celery配置
 celery:

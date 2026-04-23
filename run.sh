@@ -3,10 +3,10 @@
 # TextSplit Processor Runner
 # ============================
 # 方案1: 同步运行（无需Redis/Celery）
-#   bash run.sh                        # 默认使用 token splitter
+#   bash run.sh                        # 默认使用 LangChain TokenTextSplitter
 #   bash run.sh --splitter token       # 使用 LangChain TokenTextSplitter
 #   bash run.sh --splitter semantic    # 使用 SemanticTextSplitter
-#   bash run.sh --splitter tokenizer   # 使用 HuggingFaceTokenizerSplitter
+#   bash run.sh --splitter tokenizer   # 使用 HuggingFaceTokenizerSplitter #面壁吕老师推荐
 #
 # 方案2: 使用Celery异步运行（需要Redis）
 #   bash run.sh --celery --splitter tokenizer

@@ -1,14 +1,14 @@
 # TextSplit Processor Configuration
 
 # 处理模式: "single" - 单文件模式, "directory" - 目录模式
-mode: "single"
+mode: "directory"
 
 # 文件路径 (单文件模式使用)
-input_path: "data/input.jsonl"
-output_path: "data/output.jsonl"
+input_path: "/mnt/c/Users/ThinkPad/my_own_files/work/projects/shujupingtai/multi-language/nemotron/test_data"
+output_path: "/mnt/c/Users/ThinkPad/my_own_files/work/projects/shujupingtai/multi-language/nemotron/test_data_output"
 
 # 文本拆分器类型: "token" - TokenTextSplitter, "semantic" - SemanticTextSplitter, "tokenizer" - HuggingFaceTokenizerSplitter
-splitter_type: "token"
+splitter_type: "tokenizer"
 
 # 要处理的content字段名
 content_field: "content"

@@ -1,0 +1,34 @@
+# TextSplit Processor Configuration
+
+# 处理模式: "single" - 单文件模式, "directory" - 目录模式
+mode: "single"
+
+# 文件路径 (单文件模式使用)
+input_path: "data/input.jsonl"
+output_path: "data/output.jsonl"
+
+# 文本拆分器类型: "token" - TokenTextSplitter, "semantic" - SemanticTextSplitter
+splitter_type: "token"
+
+# 要处理的content字段名
+content_field: "content"
+
+# TokenTextSplitter参数
+token_splitter:
+  max_tokens: 1000
+  overlap: 100
+
+# SemanticTextSplitter参数 (LangChain 0.3.x版本)
+semantic_splitter:
+  chunk_size: 1000
+  buffer_size: 1
+  add_start_index: false
+
+# Celery配置
+celery:
+  broker: "redis://localhost:6379/0"
+  backend: "redis://localhost:6379/1"
+
+# 日志配置
+logging:
+  level: "INFO"

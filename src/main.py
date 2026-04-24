@@ -15,12 +15,21 @@ Usage:
 
 import argparse
 import sys
-import yaml
+import yaml, os
 from pathlib import Path
 from src.tasks import process_single_file, process_directory
 from src.utils.logger import logger
 
+# from huggingface_hub import configure_huggingface_hub
 
+# configure_huggingface_hub(cache_dir="/mnt/c/Users/ThinkPad/Downloads/huggingface/hub")
+custom_cache_path = "/mnt/c/Users/ThinkPad/Downloads/huggingface/hub" # 例如: "/data/hf_cache"
+
+# 2. 设置环境变量（旧版本库认这个）
+os.environ["HF_HOME"] = custom_cache_path
+os.environ["TRANSFORMERS_CACHE"] = custom_cache_path
+
+# 在导入 transformers 前调用
 def load_config(config_path: str) -> dict:
     """Load configuration from YAML file"""
     config_path = Path(config_path)

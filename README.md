@@ -9,6 +9,41 @@
 - 三种文本拆分器：TokenTextSplitter、SemanticTextSplitter、HuggingFaceTokenizerSplitter
 - 基于 Celery 异步任务处理
 
+## 依赖模型
+
+### HuggingFace Tokenizer 模型
+
+在使用 `tokenizer` 或 `pysbd` 切分器时，需要下载 HuggingFace tokenizer 模型。这些模型会在首次运行时自动从 HuggingFace Hub 下载并缓存到 `~/.cache/huggingface/` 目录。
+
+**按语言需要的模型：**
+
+| 语言代码 | 语言名称 | Tokenizer 模型 | 大小 |
+|----------|----------|-------------|------|
+| `en` | 英语 | bert-base-uncased | ~110M |
+| `zh` | 中文 | bert-base-chinese | ~110M |
+| `ja` | 日语 | bert-base-japanese | ~110M |
+| `ko` | 韩语 | beomi/kcbert-base | ~110M |
+| `he` | 希伯来语 | bert-base-hebrew | ~110M |
+| `ar` | 阿拉伯语 | asafaya/bert-base-arabic | ~110M |
+| `hi` | 印地语 | ai4bharat/IndicBERT | ~110M |
+| `bn` | 孟加拉语 | ai4bharat/IndicBERT | ~110M |
+| `ta` | 泰米尔语 | ai4bharat/IndicBERT | ~110M |
+| `te` | 泰卢固语 | ai4bharat/IndicBERT | ~110M |
+| `mr` | 马拉地语 | ai4bharat/IndicBERT | ~110M |
+| `th` | 泰语 | bool/boolbert-thai | ~110M |
+| `multi` | 多语言混合 | bert-base-multilingual-cased | ~170M |
+| 其他 | 其他语言 | bert-base-multilingual-cased | ~170M |
+
+**模型下载位置：**
+
+- 默认缓存：`~/.cache/huggingface/`
+- 自定义缓存：可在 `src/main.py` 中配置 `configure_huggingface_hub(cache_dir="your/custom/path")`
+
+**多语言模型 bert-base-multilingual-cased：**
+- 支持 104 种语言
+- 适用于多语言混合文本
+- 文件较大，首次加载较慢
+
 ## 项目结构
 
 ```

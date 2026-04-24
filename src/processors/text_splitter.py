@@ -1,6 +1,5 @@
 from typing import List, Optional
 from abc import ABC, abstractmethod
-from langchain_text_splitters import TokenTextSplitter, RecursiveCharacterTextSplitter
 from transformers import AutoTokenizer
 import pysbd
 from src.utils.logger import logger
@@ -91,47 +90,41 @@ class BaseTextSplitter(ABC):
         pass
 
 
-class TokenTextSplitterProcessor(BaseTextSplitter):
-    """TokenTextSplitter processor using LangChain"""
-
-    def __init__(self, max_tokens: int = 1000, overlap: int = 100):
-        self.splitter = TokenTextSplitter(
-            chunk_size=max_tokens,
-            chunk_overlap=overlap
-        )
-        logger.info(f"Initialized TokenTextSplitter with max_tokens={max_tokens}, overlap={overlap}")
-
-    def split_text(self, text: str) -> List[str]:
-        return self.splitter.split_text(text)
-
-
-class SemanticTextSplitterProcessor(BaseTextSplitter):
-    """
-    SemanticTextSplitter processor using LangChain's RecursiveCharacterTextSplitter
-    with semantic-aware parameters to simulate semantic splitting behavior.
-
-    Note: LangChain 0.3.x uses RecursiveCharacterTextSplitter as the primary semantic splitter.
-    For true semantic splitting, you can use the SemanticChunker from langchain-experimental
-    or configure RecursiveCharacterTextSplitter with appropriate separators.
-    """
-
-    def __init__(self, chunk_size: int = 1000, buffer_size: int = 1,
-                 add_start_index: bool = False, separators: List[str] = None):
-        if separators is None:
-            # Separators ordered by priority for semantic splitting
-            separators = ["\n\n", "\n", "。", "！", "？", ". ", "！", "？", " ", ""]
-
-        self.splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=buffer_size,
-            length_function=len,
-            separators=separators,
-            add_start_index=add_start_index
-        )
-        logger.info(f"Initialized SemanticTextSplitter (RecursiveCharacterTextSplitter) with chunk_size={chunk_size}")
-
-    def split_text(self, text: str) -> List[str]:
-        return self.splitter.split_text(text)
+# class TokenTextSplitterProcessor(BaseTextSplitter):
+#     """TokenTextSplitter processor using LangChain (DEPRECATED)"""
+#
+#     def __init__(self, max_tokens: int = 1000, overlap: int = 100):
+#         self.splitter = TokenTextSplitter(
+#             chunk_size=max_tokens,
+#             chunk_overlap=overlap
+#         )
+#         logger.info(f"Initialized TokenTextSplitter with max_tokens={max_tokens}, overlap={overlap}")
+#
+#     def split_text(self, text: str) -> List[str]:
+#         return self.splitter.split_text(text)
+#
+#
+# class SemanticTextSplitterProcessor(BaseTextSplitter):
+#     """
+#     SemanticTextSplitter processor using LangChain's RecursiveCharacterTextSplitter (DEPRECATED)
+#     """
+#
+#     def __init__(self, chunk_size: int = 1000, buffer_size: int = 1,
+#                  add_start_index: bool = False, separators: List[str] = None):
+#         if separators is None:
+#             separators = ["\n\n", "\n", "。", "！", "？", ". ", "！", "？", " ", ""]
+#
+#         self.splitter = RecursiveCharacterTextSplitter(
+#             chunk_size=chunk_size,
+#             chunk_overlap=buffer_size,
+#             length_function=len,
+#             separators=separators,
+#             add_start_index=add_start_index
+#         )
+#         logger.info(f"Initialized SemanticTextSplitter with chunk_size={chunk_size}")
+#
+#     def split_text(self, text: str) -> List[str]:
+#         return self.splitter.split_text(text)
 
 
 class HuggingFaceTokenizerSplitter(BaseTextSplitter):
@@ -149,8 +142,19 @@ class HuggingFaceTokenizerSplitter(BaseTextSplitter):
     Reference: NVIDIA NeMo Curator's token counting approach
     """
 
-    # Class-level cache for tokenizers
+    # Class-level cache for tokenizers and segmenters
     _tokenizer_cache = {}
+    _segmenter_cache = {}
+
+    # Language code mapping
+    language_map = {
+        "zh": "zh", "zh-cn": "zh", "zh-tw": "zh",
+        "en": "en", "en-us": "en", "en-gb": "en",
+        "es": "es", "fr": "fr", "de": "de", "it": "it",
+        "ru": "ru", "pt": "pt", "ja": "ja", "ko": "ko",
+        "ar": "ar", "he": "he", "hi": "hi", "bn": "bn",
+        "multi": "en",  # multi 语言时使用英文 segmenter 作为 fallback
+    }
 
     def __init__(
         self,
@@ -192,6 +196,9 @@ class HuggingFaceTokenizerSplitter(BaseTextSplitter):
         # Initialize tokenizer (with caching for efficiency)
         self._init_tokenizer()
 
+        # Initialize pysbd segmenter for sentence splitting
+        self._init_segmenter()
+
         logger.info(f"Initialized HuggingFaceTokenizerSplitter:")
         logger.info(f"  Language: {self.language}")
         logger.info(f"  Tokenizer: {self.hf_model_name}")
@@ -206,19 +213,25 @@ class HuggingFaceTokenizerSplitter(BaseTextSplitter):
                 AutoTokenizer.from_pretrained(self.hf_model_name)
         self.tokenizer = HuggingFaceTokenizerSplitter._tokenizer_cache[self.hf_model_name]
 
+    def _init_segmenter(self):
+        """Initialize pysbd segmenter for sentence splitting"""
+        normalized_lang = self.language_map.get(self.language, self.language)
+        if normalized_lang not in HuggingFaceTokenizerSplitter._segmenter_cache:
+            logger.info(f"Initializing pysbd segmenter for language: {normalized_lang}")
+            HuggingFaceTokenizerSplitter._segmenter_cache[normalized_lang] = pysbd.Segmenter(
+                language=normalized_lang,
+                clean=False
+            )
+        self.segmenter = HuggingFaceTokenizerSplitter._segmenter_cache[normalized_lang]
+
     def _split_by_sentences(self, text: str) -> List[str]:
         """Split text into sentences using separators."""
         if not text:
             return []
 
-        # Use RecursiveCharacterTextSplitter for sentence splitting
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=10000,  # Large enough to not split sentences
-            chunk_overlap=0,
-            length_function=len,
-            separators=self.separators
-        )
-        return splitter.split_text(text)
+        # Use pysbd for sentence splitting (replaces RecursiveCharacterTextSplitter)
+        sentences = self.segmenter.segment(text)
+        return sentences if sentences else []
 
     def _count_tokens(self, text: str) -> int:
         """Count tokens using the tokenizer."""
@@ -318,51 +331,37 @@ class PySBDSplitter(BaseTextSplitter):
     """
     使用 pysbd (Python Sentence Boundary Detection) 进行多语言句子分割的切分器。
 
-    pysbd 是一个专业的句子边界检测库，支持 60+ 语言，包括：
-    - 英语 (en)、西班牙语 (es)、法语 (fr)、德语 (de) 等西方语言
-    - 中文 (zh)、日语 (ja)、韩语 (ko) 等东亚语言
-    - 阿拉伯语 (ar)、希伯来语 (he) 等中东语言
-    - 印地语 (hi)、孟加拉语 (bn) 等南亚语言
-
+    pysbd 是一个专业的句子边界检测库，支持 60+ 语言。
     特点：
     - 基于语言规则进行精确的句子分割
     - 准确处理缩写、缩写词、书名号等边界情况
-    - 支持多语言自动检测
     """
 
     # Class-level cache for segmenters
     _segmenter_cache = {}
 
-    def __init__(
-        self,
-        max_tokens: int = 1000,
-        overlap: int = 100,
-        language: str = "en",
-        language_is_code: bool = True
-    ):
+    # Language code mapping
+    language_map = {
+        "zh": "zh", "zh-cn": "zh", "zh-tw": "zh",
+        "en": "en", "en-us": "en", "en-gb": "en",
+        "es": "es", "fr": "fr", "de": "de", "it": "it",
+        "ru": "ru", "pt": "pt", "ja": "ja", "ko": "ko",
+        "ar": "ar", "he": "he", "hi": "hi", "bn": "bn",
+        "multi": "en",  # multi 语言时使用英文 segmenter 作为 fallback
+    }
+
+    def __init__(self, max_tokens: int = 1000, overlap: int = 100, language: str = "en"):
         """
         初始化 PySBDSplitter。
 
         Args:
-            max_tokens: 每个 chunk 的最大 token 数（切分后按 token 数合并句子）
+            max_tokens: 每个 chunk 的最大 token 数
             overlap: 相邻 chunk 之间的 token 重叠数
-            language: 语言代码，例如 'en', 'zh', 'es', 'he' 等
-            language_is_code: True 表示 language 是 ISO 639-1 语言代码
-                             False 表示使用语言名称
+            language: 语言代码，例如 'en', 'zh', 'es' 等
         """
         self.max_tokens = max_tokens
         self.overlap = overlap
         self.language = language
-        self.language_is_code = language_is_code
-
-        # 映射常见语言代码
-        self.language_map = {
-            "zh": "zh", "zh-cn": "zh", "zh-tw": "zh",
-            "en": "en", "en-us": "en", "en-gb": "en",
-            "es": "es", "fr": "fr", "de": "de", "it": "it",
-            "ru": "ru", "pt": "pt", "ja": "ja", "ko": "ko",
-            "ar": "ar", "he": "he", "hi": "hi", "bn": "bn",
-        }
 
         # 获取标准化的语言代码
         normalized_lang = self.language_map.get(language.lower(), language)
@@ -371,20 +370,21 @@ class PySBDSplitter(BaseTextSplitter):
         if normalized_lang not in PySBDSplitter._segmenter_cache:
             logger.info(f"Initializing pysbd segmenter for language: {normalized_lang}")
             PySBDSplitter._segmenter_cache[normalized_lang] = pysbd.Segmenter(
-                language=normalized_lang,
-                clean=False
+                language=normalized_lang, clean=False
             )
         self.segmenter = PySBDSplitter._segmenter_cache[normalized_lang]
 
-        # 初始化 tokenizer 用于 token 计数
-        self._init_tokenizer(normalized_lang)
+        # 初始化 tokenizer，使用原始 language 参数以支持 multi
+        self._init_tokenizer(language)
 
         logger.info(f"Initialized PySBDSplitter with language={language}, max_tokens={max_tokens}, overlap={overlap}")
 
     def _init_tokenizer(self, language: str):
         """Initialize tokenizer based on language"""
-        # 选择合适的 tokenizer
-        if language == "zh":
+        if language == "multi":
+            # 多语言文本使用 multilingual 模型
+            tokenizer_name = "bert-base-multilingual-cased"
+        elif language == "zh":
             tokenizer_name = "bert-base-chinese"
         elif language == "ja":
             tokenizer_name = "bert-base-japanese"
@@ -401,16 +401,12 @@ class PySBDSplitter(BaseTextSplitter):
         else:
             tokenizer_name = "bert-base-multilingual-cased"
 
-        # 使用缓存
         if tokenizer_name not in HuggingFaceTokenizerSplitter._tokenizer_cache:
-            from transformers import AutoTokenizer
             HuggingFaceTokenizerSplitter._tokenizer_cache[tokenizer_name] = \
                 AutoTokenizer.from_pretrained(tokenizer_name)
-
         self.tokenizer = HuggingFaceTokenizerSplitter._tokenizer_cache[tokenizer_name]
 
     def _count_tokens(self, text: str) -> int:
-        """Count tokens using the tokenizer."""
         return len(self.tokenizer.encode(text, add_special_tokens=True))
 
     def split_text(self, text: str) -> List[str]:
@@ -507,26 +503,28 @@ def create_splitter(splitter_type: str, config: dict) -> BaseTextSplitter:
     Factory function to create the appropriate text splitter based on configuration
 
     Args:
-        splitter_type: "token", "semantic", or "tokenizer"
+        splitter_type: "tokenizer" or "pysbd" (token and semantic are deprecated)
         config: Configuration dictionary
 
     Returns:
         BaseTextSplitter instance
     """
-    if splitter_type == "token":
-        token_config = config.get("token_splitter", {})
-        return TokenTextSplitterProcessor(
-            max_tokens=token_config.get("max_tokens", 1000),
-            overlap=token_config.get("overlap", 100)
-        )
-    elif splitter_type == "semantic":
-        semantic_config = config.get("semantic_splitter", {})
-        return SemanticTextSplitterProcessor(
-            chunk_size=semantic_config.get("chunk_size", 1000),
-            buffer_size=semantic_config.get("buffer_size", 1),
-            add_start_index=semantic_config.get("add_start_index", False)
-        )
-    elif splitter_type == "tokenizer":
+    # if splitter_type == "token":
+    #     # DEPRECATED: Use tokenizer or pysbd instead
+    #     token_config = config.get("token_splitter", {})
+    #     return TokenTextSplitterProcessor(
+    #         max_tokens=token_config.get("max_tokens", 1000),
+    #         overlap=token_config.get("overlap", 100)
+    #     )
+    # elif splitter_type == "semantic":
+    #     # DEPRECATED: Use tokenizer or pysbd instead
+    #     semantic_config = config.get("semantic_splitter", {})
+    #     return SemanticTextSplitterProcessor(
+    #         chunk_size=semantic_config.get("chunk_size", 1000),
+    #         buffer_size=semantic_config.get("buffer_size", 1),
+    #         add_start_index=semantic_config.get("add_start_index", False)
+    #     )
+    if splitter_type == "tokenizer":
         tokenizer_config = config.get("tokenizer_splitter", {})
         return HuggingFaceTokenizerSplitter(
             max_tokens=tokenizer_config.get("max_tokens", 1000),
@@ -539,8 +537,7 @@ def create_splitter(splitter_type: str, config: dict) -> BaseTextSplitter:
         return PySBDSplitter(
             max_tokens=pysbd_config.get("max_tokens", 1000),
             overlap=pysbd_config.get("overlap", 100),
-            language=pysbd_config.get("language", "en"),
-            language_is_code=pysbd_config.get("language_is_code", True)
+            language=pysbd_config.get("language", "en")
         )
     else:
-        raise ValueError(f"Unknown splitter_type: {splitter_type}. Must be 'token', 'semantic', 'tokenizer', or 'pysbd'")
+        raise ValueError(f"Unknown splitter_type: {splitter_type}. Must be 'tokenizer' or 'pysbd'")

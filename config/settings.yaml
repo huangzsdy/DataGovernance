@@ -35,7 +35,7 @@ tokenizer_splitter:
 pysbd_splitter:
   max_tokens: 1000
   overlap: 100
-  language: "zh"
+  language: "multi"
   language_is_code: true
 
 # Celery配置

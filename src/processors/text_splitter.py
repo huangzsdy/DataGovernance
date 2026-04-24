@@ -89,6 +89,15 @@ class BaseTextSplitter(ABC):
         """Split text into chunks"""
         pass
 
+    def split_texts_batch(self, texts: List[str]) -> List[List[str]]:
+        """
+        Batch split multiple texts. Default implementation calls split_text for each.
+        Override this for optimized batch processing.
+        """
+        if not texts:
+            return []
+        return [self.split_text(text) for text in texts]
+
 
 # class TokenTextSplitterProcessor(BaseTextSplitter):
 #     """TokenTextSplitter processor using LangChain (DEPRECATED)"""
@@ -236,6 +245,16 @@ class HuggingFaceTokenizerSplitter(BaseTextSplitter):
     def _count_tokens(self, text: str) -> int:
         """Count tokens using the tokenizer."""
         return len(self.tokenizer.encode(text, add_special_tokens=True))
+
+    def _count_tokens_batch(self, texts: List[str]) -> List[int]:
+        """
+        Count tokens for multiple texts in one batch call (much faster).
+        """
+        if not texts:
+            return []
+        # Batch encode all texts at once
+        encoded = self.tokenizer(texts, add_special_tokens=True, truncation=False)
+        return [len(ids) for ids in encoded['input_ids']]
 
     def split_text(self, text: str) -> List[str]:
         """

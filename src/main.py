@@ -17,6 +17,11 @@ import argparse
 import sys
 import yaml, os
 from pathlib import Path
+
+# Disable transformers warnings
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
+
 from src.tasks import process_single_file, process_directory
 from src.utils.logger import logger
 
@@ -98,7 +103,12 @@ def run_sync(config_path: str = "config/settings.yaml") -> dict:
     output_path = config.get('output_path')
 
     if mode == 'directory':
-        result = processor.process_directory(input_path, output_path)
+        # Check if parallel mode is enabled
+        max_workers = config.get('max_workers')
+        if max_workers and max_workers > 1:
+            result = processor.process_directory_parallel(input_path, output_path, max_workers)
+        else:
+            result = processor.process_directory(input_path, output_path)
     else:
         result = processor.process_file(input_path, output_path)
 

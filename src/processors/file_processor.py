@@ -1,8 +1,18 @@
 import json
 from pathlib import Path
 from typing import List, Dict, Any
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing as mp
 from src.processors.text_splitter import create_splitter
 from src.utils.logger import logger
+
+
+def _process_single_file_worker(args):
+    """Worker function for multiprocessing"""
+    input_file, output_file, config = args
+    from src.processors.file_processor import FileProcessor
+    processor = FileProcessor(config)
+    return processor.process_file(input_file, output_file)
 
 
 class FileProcessor:
@@ -33,6 +43,65 @@ class FileProcessor:
         if not content:
             logger.warning(f"Empty content in field '{self.content_field}'")
             return [line]
+
+        # Split the content
+        split_contents = self.splitter.split_text(content)
+        logger.debug(f"Split content into {len(split_contents)} chunks")
+
+        # Create new JSON objects, each with a split_content field
+        result = []
+        for split_content in split_contents:
+            new_line = line.copy()
+            new_line["split_content"] = split_content
+            result.append(new_line)
+
+        return result
+
+    def process_lines_batch(self, lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Process multiple JSON lines in batch for better performance.
+
+        Args:
+            lines: List of dictionaries containing JSON objects
+
+        Returns:
+            List of dictionaries with split_content added
+        """
+        if not lines:
+            return []
+
+        # Filter lines with valid content
+        valid_lines = []
+        valid_contents = []
+        valid_indices = []
+
+        for i, line in enumerate(lines):
+            if self.content_field in line and line.get(self.content_field):
+                valid_lines.append(line)
+                valid_contents.append(line[self.content_field])
+                valid_indices.append(i)
+
+        if not valid_contents:
+            return lines
+
+        # Batch split all contents at once
+        all_splits = self.splitter.split_texts_batch(valid_contents)
+
+        # Build results
+        results = []
+        for idx, line in zip(valid_indices, valid_lines):
+            splits = all_splits[idx] if idx < len(all_splits) else []
+            for split_content in splits:
+                new_line = line.copy()
+                new_line["split_content"] = split_content
+                results.append(new_line)
+
+        # Add lines without content as-is
+        for i, line in enumerate(lines):
+            if i not in valid_indices:
+                results.append(line)
+
+        return results
 
         # Split the content
         split_contents = self.splitter.split_text(content)
@@ -109,29 +178,30 @@ class FileProcessor:
         }
 
     def _process_jsonl_file(self, input_path: Path, output_path: Path) -> dict:
-        """Process a JSONL file (one JSON object per line)"""
-        input_count = 0
-        output_lines = []
-
+        """Process a JSONL file (one JSON object per line) with batch optimization"""
+        # Read all lines at once
         with open(input_path, 'r', encoding='utf-8') as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if not line:
-                    continue
+            lines = [line.strip() for line in f if line.strip()]
 
-                try:
-                    data = json.loads(line)
-                    input_count += 1
-                    processed = self.process_line(data)
-                    output_lines.extend(processed)
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Skipping invalid JSON at line {line_num}: {e}")
-                    continue
+        # Parse all JSON at once
+        data_list = []
+        for line_num, line in enumerate(lines, 1):
+            try:
+                data_list.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                logger.warning(f"Skipping invalid JSON at line {line_num}: {e}")
 
-        # Write output
+        input_count = len(data_list)
+
+        # Batch process all lines (more efficient)
+        output_lines = []
+        for data in data_list:
+            processed = self.process_line(data)
+            output_lines.extend(processed)
+
+        # Write all at once (faster than line by line)
         with open(output_path, 'w', encoding='utf-8') as f:
-            for line in output_lines:
-                f.write(json.dumps(line, ensure_ascii=False) + '\n')
+            f.write('\n'.join(json.dumps(line, ensure_ascii=False) for line in output_lines))
 
         return {
             "input_file": str(input_path),
@@ -189,6 +259,73 @@ class FileProcessor:
                     "input_file": str(input_file),
                     "error": str(e)
                 })
+
+        return {
+            "files_processed": len(results),
+            "results": results
+        }
+
+    def process_directory_parallel(self, input_dir: str, output_dir: str, max_workers: int = None) -> dict:
+        """
+        Process all JSON/JSONL files in a directory in parallel using multiprocessing.
+
+        Args:
+            input_dir: Input directory path
+            output_dir: Output directory path
+            max_workers: Maximum number of worker processes (default: CPU count)
+
+        Returns:
+            Processing results for all files
+        """
+        input_dir = Path(input_dir)
+        output_dir = Path(output_dir)
+
+        if not input_dir.exists():
+            raise FileNotFoundError(f"Input directory not found: {input_dir}")
+
+        # Find all JSON and JSONL files
+        json_files = list(input_dir.rglob("*.json"))
+        jsonl_files = list(input_dir.rglob("*.jsonl"))
+        all_files = json_files + jsonl_files
+
+        if not all_files:
+            logger.warning(f"No JSON/JSONL files found in {input_dir}")
+            return {"files_processed": 0, "results": []}
+
+        logger.info(f"Found {len(all_files)} files to process")
+
+        # Prepare task arguments
+        tasks = []
+        for input_file in all_files:
+            relative_path = input_file.relative_to(input_dir)
+            output_file = self._get_output_path(relative_path, output_dir)
+            tasks.append((str(input_file), str(output_file), self.config))
+
+        # Determine number of workers
+        if max_workers is None:
+            max_workers = mp.cpu_count()
+        logger.info(f"Processing with {max_workers} workers")
+
+        # Process in parallel
+        results = []
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_process_single_file_worker, task): task[0]
+                for task in tasks
+            }
+
+            for future in as_completed(futures):
+                input_file = futures[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                    logger.info(f"Completed: {input_file}")
+                except Exception as e:
+                    logger.error(f"Error processing {input_file}: {e}")
+                    results.append({
+                        "input_file": input_file,
+                        "error": str(e)
+                    })
 
         return {
             "files_processed": len(results),

@@ -9,7 +9,10 @@
 #   bash run.sh --splitter tokenizer   # 使用 HuggingFaceTokenizerSplitter
 #   bash run.sh --splitter pysbd       # 使用 PySBDSplitter (推荐，按句子精确切分)
 #
-# 方案2: 使用Celery异步运行（需要Redis）
+# 方案2: 并行运行（多进程）
+#   bash run.sh --workers 4 --splitter pysbd   # 使用 4 个进程并行处理多个文件
+#
+# 方案3: 使用Celery异步运行（需要Redis）
 #   bash run.sh --celery --splitter pysbd
 
 # 设置新的输入输出目录
@@ -18,6 +21,7 @@ OUTPUT_DIR="/mnt/c/Users/ThinkPad/my_own_files/work/projects/shujupingtai/multi-
 
 # 默认splitter类型
 SPLITTER_TYPE="pysbd"
+MAX_WORKERS=1
 
 # 解析命令行参数
 while [[ $# -gt 0 ]]; do
@@ -26,13 +30,17 @@ while [[ $# -gt 0 ]]; do
             CELERY_MODE=true
             shift
             ;;
+        --workers)
+            MAX_WORKERS="$2"
+            shift 2
+            ;;
         --splitter)
             SPLITTER_TYPE="$2"
             shift 2
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: bash run.sh [--celery] [--splitter token|semantic|tokenizer|pysbd]"
+            echo "Usage: bash run.sh [--celery] [--workers N] [--splitter token|semantic|tokenizer|pysbd]"
             exit 1
             ;;
     esac
@@ -46,12 +54,14 @@ sed -i "s|^input_path:.*|input_path: \"$INPUT_DIR\"|" config/settings.yaml
 sed -i "s|^output_path:.*|output_path: \"$OUTPUT_DIR\"|" config/settings.yaml
 sed -i "s|^mode:.*|mode: \"directory\"|" config/settings.yaml
 sed -i "s|^splitter_type:.*|splitter_type: \"$SPLITTER_TYPE\"|" config/settings.yaml
+sed -i "s|^max_workers:.*|max_workers: $MAX_WORKERS|" config/settings.yaml
 
 echo "Configuration updated:"
 echo "  Input:        $INPUT_DIR"
 echo "  Output:       $OUTPUT_DIR"
 echo "  Mode:         directory"
 echo "  Splitter:     $SPLITTER_TYPE"
+echo "  Workers:     $MAX_WORKERS"
 
 # 判断运行模式
 if [ "$CELERY_MODE" = true ]; then
@@ -71,7 +81,11 @@ if [ "$CELERY_MODE" = true ]; then
     echo "Celery worker running (PID: $CELERY_PID). Press Ctrl+C to stop."
     wait $CELERY_PID
 else
-    echo "Running in sync mode (no Redis/Celery required)..."
+    if [ "$MAX_WORKERS" -gt 1 ]; then
+        echo "Running in parallel mode with $MAX_WORKERS workers..."
+    else
+        echo "Running in sync mode (no Redis/Celery required)..."
+    fi
     # 同步运行（无需Celery）
     python -m src.main --config config/settings.yaml --sync
 fi

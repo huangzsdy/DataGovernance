@@ -1,8 +1,19 @@
 from typing import List, Optional
 from abc import ABC, abstractmethod
-from transformers import AutoTokenizer
 import pysbd
+from transformers import AutoTokenizer
 from src.utils.logger import logger
+
+# Try to import torch for GPU support
+try:
+    import torch
+    HAS_CUDA = torch.cuda.is_available()
+    if HAS_CUDA:
+        print(f"CUDA available: {torch.cuda.get_device_name(0)}")
+except ImportError:
+    HAS_CUDA = False
+
+CUDA_DEVICE = None
 
 
 # Language-specific separator presets
@@ -517,6 +528,10 @@ class PySBDSplitter(BaseTextSplitter):
         return [chunk for chunk in chunks if chunk.strip()]
 
 
+# Global GPU configuration
+USE_GPU = False  # Set to True to enable GPU acceleration
+
+
 def create_splitter(splitter_type: str, config: dict) -> BaseTextSplitter:
     """
     Factory function to create the appropriate text splitter based on configuration
@@ -528,6 +543,16 @@ def create_splitter(splitter_type: str, config: dict) -> BaseTextSplitter:
     Returns:
         BaseTextSplitter instance
     """
+    global USE_GPU
+
+    # Check GPU configuration
+    gpu_config = config.get("use_gpu", False)
+    if gpu_config and HAS_CUDA:
+        USE_GPU = True
+        logger.info("GPU acceleration enabled")
+    elif gpu_config and not HAS_CUDA:
+        logger.warning("use_gpu=True but CUDA not available, using CPU")
+
     # if splitter_type == "token":
     #     # DEPRECATED: Use tokenizer or pysbd instead
     #     token_config = config.get("token_splitter", {})

@@ -1,8 +1,33 @@
-import json
+import json as stdlib_json
 from pathlib import Path
 from typing import List, Dict, Any
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing as mp
+
+# Try to use orjson for faster JSON parsing (10x faster)
+try:
+    import orjson as _orjson
+    _json_loads = _orjson.loads
+    _json_dumps = lambda obj: _orjson.dumps(obj).decode('utf-8')
+    _json_load = lambda f: _orjson.loads(f.read())
+    JSONDecodeError = Exception
+    HAS_ORJSON = True
+except ImportError:
+    import json as _stdlib_json
+    _json_loads = _stdlib_json.loads
+    _json_dumps = lambda obj: _stdlib_json.dumps(obj, ensure_ascii=False)
+    _json_load = _stdlib_json.load
+    from json import JSONDecodeError
+    HAS_ORJSON = False
+
+# Define json functions
+def json_loads(s):
+    return _json_loads(s)
+def json_dumps(obj):
+    return _json_dumps(obj)
+def json_load(f):
+    return _json_load(f)
+
 from src.processors.text_splitter import create_splitter
 from src.utils.logger import logger
 
@@ -23,7 +48,24 @@ class FileProcessor:
         self.content_field = config.get("content_field", "content")
         splitter_type = config.get("splitter_type", "token")
         self.splitter = create_splitter(splitter_type, config)
+        # Warm up tokenizer to avoid first-call penalty
+        self._warmup()
         logger.info(f"FileProcessor initialized with content_field='{self.content_field}', splitter_type='{splitter_type}'")
+
+    def _warmup(self):
+        """Warm up tokenizer to avoid first-call latency"""
+        # Run multiple dummy tokenizations to warm up the tokenizer
+        warmup_texts = [
+            "This is a warmup text for faster tokenization.",
+            "Hello world. This is a test sentence.",
+            "多语言文本处理测试。Multilingual text processing test.",
+            "The quick brown fox jumps over the lazy dog.",
+        ]
+        try:
+            for text in warmup_texts:
+                self.splitter.split_text(text)
+        except Exception:
+            pass  # Ignore warmup errors
 
     def process_line(self, line: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -155,7 +197,7 @@ class FileProcessor:
     def _process_json_file(self, input_path: Path, output_path: Path) -> dict:
         """Process a JSON file (array of objects)"""
         with open(input_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+            data = json_load(f)
 
         if not isinstance(data, list):
             # Single object, wrap in list
@@ -166,9 +208,15 @@ class FileProcessor:
             processed = self.process_line(line)
             output_lines.extend(processed)
 
-        # Write output
+        # Write output (pretty print for JSON files)
         with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(output_lines, f, ensure_ascii=False, indent=2)
+            result = json_dumps(output_lines)
+            # orjson doesn't support indent, use standard lib for pretty print
+            if HAS_ORJSON:
+                import json as _stdlib_json
+                _stdlib_json.dump(output_lines, f, ensure_ascii=False, indent=2)
+            else:
+                f.write(result)
 
         return {
             "input_file": str(input_path),
@@ -187,8 +235,8 @@ class FileProcessor:
         data_list = []
         for line_num, line in enumerate(lines, 1):
             try:
-                data_list.append(json.loads(line))
-            except json.JSONDecodeError as e:
+                data_list.append(json_loads(line))
+            except JSONDecodeError as e:
                 logger.warning(f"Skipping invalid JSON at line {line_num}: {e}")
 
         input_count = len(data_list)
@@ -201,7 +249,7 @@ class FileProcessor:
 
         # Write all at once (faster than line by line)
         with open(output_path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(json.dumps(line, ensure_ascii=False) for line in output_lines))
+            f.write('\n'.join(json_dumps(line) for line in output_lines))
 
         return {
             "input_file": str(input_path),

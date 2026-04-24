@@ -8,6 +8,13 @@ langchain-text-splitters>=0.3.0
 
 # HuggingFace
 transformers>=4.30.0
+tokenizers>=0.15.0  # Rust-based tokenizer (10x faster)
+
+# GPU Acceleration (optional - for CUDA support)
+# torch>=2.0.0  # Uncomment if you have NVIDIA GPU and want GPU acceleration
+
+# Fast JSON (10x faster than stdlib json)
+orjson>=3.9.0
 
 # Sentence Boundary Detection (pysbd)
 pysbd>=0.3.4

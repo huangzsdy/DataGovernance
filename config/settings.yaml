@@ -10,9 +10,12 @@ output_path: "/mnt/c/Users/ThinkPad/my_own_files/work/projects/shujupingtai/mult
 # 文本拆分器类型: "token" - TokenTextSplitter, "semantic" - SemanticTextSplitter, "tokenizer" - HuggingFaceTokenizerSplitter, "pysbd" - PySBDSplitter
 splitter_type: "pysbd"
 
+# 是否使用 GPU 加速（需要安装 torch with CUDA）
+use_gpu: true
+
 # 并行处理 workers 数量（设置为 > 1 启用多进程并行）
 # max_workers: 4  # 使用 4 个进程并行处理多个文件
-max_workers: 1    # 串行处理（默认）
+max_workers: 8
 
 # 要处理的content字段名
 content_field: "content"

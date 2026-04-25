@@ -15,14 +15,6 @@
 # 方案3: 使用Celery异步运行（需要Redis）
 #   bash run.sh --celery --splitter pysbd
 
-# 设置新的输入输出目录
-INPUT_DIR="/mnt/c/Users/ThinkPad/my_own_files/work/projects/shujupingtai/multi-language/nemotron/test_data"
-OUTPUT_DIR="/mnt/c/Users/ThinkPad/my_own_files/work/projects/shujupingtai/multi-language/nemotron/test_data_output"
-
-# 默认splitter类型
-SPLITTER_TYPE="pysbd"
-MAX_WORKERS=1
-
 # 解析命令行参数
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -46,22 +38,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 创建输出目录（如果不存在）
-mkdir -p "$OUTPUT_DIR"
 
-# 更新配置文件
-sed -i "s|^input_path:.*|input_path: \"$INPUT_DIR\"|" config/settings.yaml
-sed -i "s|^output_path:.*|output_path: \"$OUTPUT_DIR\"|" config/settings.yaml
-sed -i "s|^mode:.*|mode: \"directory\"|" config/settings.yaml
-sed -i "s|^splitter_type:.*|splitter_type: \"$SPLITTER_TYPE\"|" config/settings.yaml
-sed -i "s|^max_workers:.*|max_workers: $MAX_WORKERS|" config/settings.yaml
-
-echo "Configuration updated:"
-echo "  Input:        $INPUT_DIR"
-echo "  Output:       $OUTPUT_DIR"
-echo "  Mode:         directory"
-echo "  Splitter:     $SPLITTER_TYPE"
-echo "  Workers:     $MAX_WORKERS"
 
 # 判断运行模式
 if [ "$CELERY_MODE" = true ]; then
@@ -81,11 +58,6 @@ if [ "$CELERY_MODE" = true ]; then
     echo "Celery worker running (PID: $CELERY_PID). Press Ctrl+C to stop."
     wait $CELERY_PID
 else
-    if [ "$MAX_WORKERS" -gt 1 ]; then
-        echo "Running in parallel mode with $MAX_WORKERS workers..."
-    else
-        echo "Running in sync mode (no Redis/Celery required)..."
-    fi
     # 同步运行（无需Celery）
     python -m src.main --config config/settings.yaml --sync
 fi

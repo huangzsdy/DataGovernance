@@ -1,5 +1,6 @@
 import json as stdlib_json
 from pathlib import Path
+import traceback
 from typing import List, Dict, Any
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing as mp
@@ -172,6 +173,8 @@ class FileProcessor:
         input_path = Path(input_path)
         output_path = Path(output_path)
 
+        logger.info(f"process_file: input_path={input_path}, suffix='{input_path.suffix}'")
+
         # Validate input file
         if not input_path.exists():
             raise FileNotFoundError(f"Input file not found: {input_path}")
@@ -184,7 +187,10 @@ class FileProcessor:
         is_jsonl = input_path.suffix.lower() == ".jsonl"
 
         if not is_json and not is_jsonl:
-            raise ValueError(f"Unsupported file type: {input_path.suffix}. Must be .json or .jsonl")
+            # Check if input is a directory (for single file mode, the path might be wrong)
+            if input_path.is_dir():
+                raise ValueError(f"Input path is a directory: {input_path}. For single file mode, provide a file path.")
+            raise ValueError(f"Unsupported file type: '{input_path.suffix}'. Must be .json or .jsonl")
 
         logger.info(f"Reading from {input_path}")
 
@@ -228,8 +234,15 @@ class FileProcessor:
     def _process_jsonl_file(self, input_path: Path, output_path: Path) -> dict:
         """Process a JSONL file (one JSON object per line) with batch optimization"""
         # Read all lines at once
-        with open(input_path, 'r', encoding='utf-8') as f:
-            lines = [line.strip() for line in f if line.strip()]
+        with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = []
+            try:
+                for li in f:
+                    if li.strip():
+                        lines.append(li.strip())
+            except Exception as e:
+                logger.error(f"Error reading file {input_path}: {e}")
+                traceback.print_exc()
 
         # Parse all JSON at once
         data_list = []
